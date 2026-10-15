@@ -1,0 +1,724 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Matefinder</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700;12..96,800&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+:root { color-scheme: light; }
+body { margin: 0; }
+
+/* Layout: board on the left, a control rail on the right; stacks on phones. */
+:root {
+  --bg: #e9eef0;
+  --panel: #f8fafa;
+  --fg: #172125;
+  --muted: #566a72;
+  --line: #cdd8dc;
+  --accent: #1c7a6c;
+  --accent-fg: #ffffff;
+  --sq-light: #e4e8dc;
+  --sq-dark: #6c8b7b;
+  --sel: rgba(244, 196, 48, 0.55);
+  --last: rgba(244, 196, 48, 0.38);
+  --hint: rgba(52, 120, 246, 0.5);
+  --good: #1f8a4c;
+  --bad: #c23b2e;
+  --neutral: #8a979d;
+  --piece-w: #fbfcfa;
+  --piece-w-edge: #1a2327;
+  --piece-b: #1b2327;
+  --piece-b-edge: #dfe7ea;
+  --font-display: "Bricolage Grotesque", "Avenir Next", "Segoe UI", system-ui, sans-serif;
+  --font-mono: "IBM Plex Mono", ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #12181b;
+    --panel: #1a2226;
+    --fg: #e6edef;
+    --muted: #8fa1a8;
+    --line: #2b373c;
+    --accent: #4cc2ae;
+    --accent-fg: #0b1a17;
+    --sq-light: #aab5a9;
+    --sq-dark: #4f6b60;
+    --sel: rgba(244, 196, 48, 0.5);
+    --last: rgba(244, 196, 48, 0.32);
+    --hint: rgba(90, 150, 255, 0.6);
+    --good: #4cc27c;
+    --bad: #f0685a;
+    --neutral: #6f8189;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #12181b;
+  --panel: #1a2226;
+  --fg: #e6edef;
+  --muted: #8fa1a8;
+  --line: #2b373c;
+  --accent: #4cc2ae;
+  --accent-fg: #0b1a17;
+  --sq-light: #aab5a9;
+  --sq-dark: #4f6b60;
+  --sel: rgba(244, 196, 48, 0.5);
+  --last: rgba(244, 196, 48, 0.32);
+  --hint: rgba(90, 150, 255, 0.6);
+  --good: #4cc27c;
+  --bad: #f0685a;
+  --neutral: #6f8189;
+  color-scheme: dark;
+}
+
+* { box-sizing: border-box; }
+body {
+  background: var(--bg);
+  color: var(--fg);
+  font-family: var(--font-display);
+  font-size: 15px;
+  line-height: 1.45;
+  padding-block: 20px 32px;
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+}
+.wrap { max-width: 960px; margin: 0 auto; display: flex; flex-direction: column; gap: 18px; }
+
+header { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+.brand { font-size: 26px; font-weight: 800; letter-spacing: -0.02em; margin: 0; }
+.brand span { color: var(--accent); }
+.tag { color: var(--muted); font-size: 13px; }
+
+.game { display: grid; grid-template-columns: minmax(0, 560px) minmax(260px, 1fr); gap: 24px; align-items: start; }
+.boardcol { min-width: 0; }
+
+#board {
+  position: relative;
+  width: 100%;
+  max-width: 560px;
+  aspect-ratio: 1;
+  display: grid;
+  grid-template-columns: repeat(8, 1fr);
+  grid-template-rows: repeat(8, 1fr);
+  border-radius: 4px;
+  overflow: hidden;
+  touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
+  container-type: inline-size;
+  box-shadow: 0 1px 0 var(--line), 0 12px 28px -14px rgba(10, 25, 30, 0.45);
+}
+#board.shake { animation: shake 0.32s; }
+@keyframes shake { 20% { transform: translateX(-6px); } 40% { transform: translateX(6px); } 60% { transform: translateX(-4px); } 80% { transform: translateX(3px); } }
+
+.sq { position: relative; display: flex; align-items: center; justify-content: center; }
+.sq.l { background: var(--sq-light); }
+.sq.d { background: var(--sq-dark); }
+.sq.last::before, .sq.sel::before, .sq.hint::before { content: ""; position: absolute; inset: 0; }
+.sq.last::before { background: var(--last); }
+.sq.sel::before { background: var(--sel); }
+.sq.hint::before { background: var(--hint); animation: pulse 1.2s ease-in-out infinite; }
+@keyframes pulse { 50% { opacity: 0.55; } }
+.sq.check::after { content: ""; position: absolute; inset: 0; background: radial-gradient(circle, rgba(220, 40, 30, 0.85) 0%, rgba(220, 40, 30, 0.35) 45%, transparent 72%); }
+.sq.mate::after { background: radial-gradient(circle, rgba(220, 40, 30, 0.95) 0%, rgba(220, 40, 30, 0.5) 50%, transparent 78%); }
+
+.coord { position: absolute; font-family: var(--font-mono); font-size: 2.3cqw; font-weight: 600; line-height: 1; pointer-events: none; z-index: 1; }
+.coord.rk { top: 0.8cqw; left: 0.8cqw; }
+.coord.fl { bottom: 0.8cqw; right: 0.9cqw; }
+.sq.l .coord { color: var(--sq-dark); }
+.sq.d .coord { color: var(--sq-light); }
+
+.dot { position: absolute; width: 32%; height: 32%; border-radius: 50%; background: rgba(20, 35, 30, 0.28); z-index: 2; pointer-events: none; }
+.ring { position: absolute; inset: 4%; border-radius: 50%; border: 0.9cqw solid rgba(20, 35, 30, 0.28); z-index: 2; pointer-events: none; }
+
+.piece {
+  position: relative;
+  z-index: 3;
+  font-size: 10.4cqw;
+  line-height: 1;
+  font-family: "Segoe UI Symbol", "Noto Sans Symbols 2", "Apple Symbols", "DejaVu Sans", sans-serif;
+  pointer-events: none;
+  paint-order: stroke fill;
+  text-shadow: 0 0.35cqw 0.5cqw rgba(0, 0, 0, 0.28);
+}
+.piece.w { color: var(--piece-w); -webkit-text-stroke: 0.55cqw var(--piece-w-edge); }
+.piece.b { color: var(--piece-b); -webkit-text-stroke: 0.25cqw var(--piece-b-edge); }
+.piece.lift { opacity: 0.25; }
+
+.ghost {
+  position: fixed;
+  z-index: 50;
+  left: 0; top: 0;
+  display: flex; align-items: center; justify-content: center;
+  pointer-events: none;
+  line-height: 1;
+  font-family: "Segoe UI Symbol", "Noto Sans Symbols 2", "Apple Symbols", "DejaVu Sans", sans-serif;
+  paint-order: stroke fill;
+  filter: drop-shadow(0 6px 8px rgba(0, 0, 0, 0.35));
+}
+.ghost.w { color: var(--piece-w); -webkit-text-stroke: 0.055em var(--piece-w-edge); }
+.ghost.b { color: var(--piece-b); -webkit-text-stroke: 0.025em var(--piece-b-edge); }
+
+.promo { position: absolute; inset: 0; z-index: 10; display: flex; align-items: center; justify-content: center; background: rgba(10, 20, 24, 0.55); }
+.promo-box { display: flex; gap: 8px; padding: 10px; background: var(--panel); border-radius: 8px; }
+.promo-box button { width: 14cqw; height: 14cqw; border: 1px solid var(--line); border-radius: 6px; background: var(--sq-light); cursor: pointer; display: flex; align-items: center; justify-content: center; padding: 0; }
+.promo-box button:hover { background: var(--sel); }
+.promo-box .piece { font-size: 11cqw; pointer-events: none; }
+
+.rail { min-width: 0; display: flex; flex-direction: column; gap: 14px; }
+.card { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 16px; }
+.puzzle-title { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.puzzle-title h2 { margin: 0; font-size: 24px; font-weight: 700; letter-spacing: -0.015em; }
+.side { display: inline-flex; align-items: center; gap: 8px; color: var(--muted); font-size: 14px; margin-top: 2px; }
+.chip { width: 14px; height: 14px; border-radius: 3px; border: 1.5px solid var(--fg); }
+.chip.w { background: #fbfcfa; }
+.chip.b { background: #1b2327; }
+.meta { display: flex; gap: 14px; flex-wrap: wrap; margin-top: 12px; font-family: var(--font-mono); font-size: 12.5px; color: var(--muted); }
+.meta b { color: var(--fg); font-weight: 600; }
+#timer { font-variant-numeric: tabular-nums; }
+
+.status { min-height: 76px; display: flex; flex-direction: column; gap: 6px; justify-content: center; }
+.status .msg { font-size: 17px; font-weight: 600; line-height: 1.3; margin: 0; }
+.status .sub { color: var(--muted); font-size: 13.5px; margin: 0; }
+.status.good .msg { color: var(--good); }
+.status.bad .msg { color: var(--bad); }
+.delta { font-family: var(--font-mono); font-weight: 600; font-size: 13px; }
+.delta.up { color: var(--good); }
+.delta.down { color: var(--bad); }
+
+.actions { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+button.btn {
+  font: inherit; font-weight: 600; font-size: 14px;
+  padding: 11px 12px;
+  border-radius: 8px;
+  border: 1px solid var(--line);
+  background: transparent;
+  color: var(--fg);
+  cursor: pointer;
+  min-height: 44px;
+}
+button.btn:hover { border-color: var(--muted); }
+button.btn:disabled { opacity: 0.45; cursor: default; }
+button.btn.primary { grid-column: 1 / -1; background: var(--accent); border-color: var(--accent); color: var(--accent-fg); font-size: 15px; }
+button.btn.primary:hover { filter: brightness(1.06); }
+button:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
+
+.stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
+.stat { display: flex; flex-direction: column; gap: 2px; }
+.stat .k { font-size: 11.5px; letter-spacing: 0.06em; text-transform: uppercase; color: var(--muted); }
+.stat .v { font-family: var(--font-mono); font-size: 22px; font-weight: 600; font-variant-numeric: tabular-nums; }
+.log { display: flex; gap: 5px; margin-top: 14px; flex-wrap: wrap; min-height: 14px; }
+.log i { width: 14px; height: 14px; border-radius: 3px; background: var(--neutral); display: block; }
+.log i.win { background: var(--good); }
+.log i.fail { background: var(--bad); }
+.log-label { font-size: 12px; color: var(--muted); margin-top: 8px; }
+
+.err { padding: 14px; border: 1px solid var(--bad); border-radius: 8px; color: var(--bad); }
+
+@media (max-width: 800px) {
+  .game { grid-template-columns: minmax(0, 1fr); gap: 16px; }
+  #board { max-width: none; }
+}
+@media (prefers-reduced-motion: reduce) {
+  #board.shake { animation: none; }
+  .sq.hint::before { animation: none; }
+}
+</style>
+</head>
+<body>
+
+<div class="wrap">
+  <header>
+    <h1 class="brand">Mate<span>finder</span></h1>
+    <span class="tag">Checkmate puzzles. Drag a piece or tap, then tap a square.</span>
+  </header>
+
+  <div class="game">
+    <div class="boardcol">
+      <div id="board" role="application" aria-label="Chess board"></div>
+    </div>
+
+    <div class="rail">
+      <div class="card">
+        <div class="puzzle-title">
+          <h2 id="title">Mate in 2</h2>
+        </div>
+        <div class="side"><span class="chip w" id="chip"></span><span id="side">White to move</span></div>
+        <div class="meta">
+          <span>Puzzle <b id="prating">1000</b></span>
+          <span>Time <b id="timer">0:00</b></span>
+          <span id="theme"></span>
+        </div>
+      </div>
+
+      <div class="card status" id="statusbox" role="status" aria-live="polite">
+        <p class="msg" id="msg">Find the checkmate.</p>
+        <p class="sub" id="sub"></p>
+      </div>
+
+      <div class="actions">
+        <button class="btn" id="hintBtn">Hint</button>
+        <button class="btn" id="solBtn">Solution</button>
+        <button class="btn" id="flipBtn">Flip board</button>
+        <button class="btn" id="skipBtn">Skip</button>
+        <button class="btn primary" id="nextBtn" hidden>Next puzzle</button>
+      </div>
+
+      <div class="card">
+        <div class="stats">
+          <div class="stat"><span class="k">Rating</span><span class="v" id="rating">1000</span></div>
+          <div class="stat"><span class="k">Streak</span><span class="v" id="streak">0</span></div>
+          <div class="stat"><span class="k">Solved</span><span class="v" id="solved">0</span></div>
+        </div>
+        <div class="log" id="log" aria-label="Recent results"></div>
+        <div class="log-label">Recent puzzles, oldest first</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/chess.js/0.10.3/chess.min.js"></script>
+<script>
+(function () {
+  // Every position below was checked by brute force: the side to move has a forced mate in n.
+  var PUZZLES = [
+    { id: 1,  n: 1, rating: 600,  theme: "Back-rank mate",  fen: "6k1/5ppp/8/8/8/8/8/R3K3 w - - 0 1" },
+    { id: 2,  n: 1, rating: 650,  theme: "Fool's mate",     fen: "rnbqkbnr/pppp1ppp/8/4p3/6P1/5P2/PPPPP2P/RNBQKBNR b KQkq - 0 2" },
+    { id: 3,  n: 1, rating: 700,  theme: "Scholar's mate",  fen: "r1bqkb1r/pppp1ppp/2n2n2/4p2Q/2B1P3/8/PPPP1PPP/RNB1K1NR w KQkq - 4 4" },
+    { id: 4,  n: 1, rating: 750,  theme: "Smothered mate",  fen: "6rk/6pp/8/6N1/8/8/8/6K1 w - - 0 1" },
+    { id: 5,  n: 2, rating: 900,  theme: "Ladder mate",     fen: "7k/8/8/8/8/8/R7/1R4K1 w - - 0 1" },
+    { id: 6,  n: 2, rating: 1000, theme: "Back-rank mate",  fen: "7k/5ppp/3r4/3R4/8/8/6PP/2R3K1 w - - 0 1" },
+    { id: 7,  n: 2, rating: 1100, theme: "Back-rank mate",  fen: "7k/5ppp/8/2n5/8/1R1q4/P1P2PP1/K7 w - - 0 1" },
+    { id: 8,  n: 2, rating: 1150, theme: "Légal's mate", fen: "rn1qkbnr/ppp2p1p/3p2p1/4N3/2B1P3/2N5/PPPP1PPP/R1BbK2R w KQkq - 0 6" },
+    { id: 9,  n: 2, rating: 1200, theme: "Back-rank mate",  fen: "6k1/5ppp/8/4q3/4R3/8/QPP1r1PP/6K1 w - - 0 1" },
+    { id: 10, n: 2, rating: 1250, theme: "Forced mate",     fen: "1k6/ppp5/6q1/r7/7R/8/1P3PP1/6KB w - - 0 1" },
+    { id: 11, n: 2, rating: 1300, theme: "Forced mate",     fen: "3N3k/5ppp/5B2/8/Q3r3/8/5PPP/K3R3 w - - 0 1" },
+    { id: 12, n: 2, rating: 1350, theme: "Forced mate",     fen: "1k6/ppp5/6Rb/8/8/Q7/2P3Pr/6K1 w - - 0 1" },
+    { id: 13, n: 2, rating: 1400, theme: "Forced mate",     fen: "6k1/5pbp/6p1/8/5B2/Qr1R4/P1P3P1/n6K w - - 0 1" },
+    { id: 14, n: 3, rating: 1650, theme: "Forced mate",     fen: "6k1/5p1p/2RB2p1/8/6Q1/5r2/PP3P1P/6K1 w - - 0 1" },
+    { id: 15, n: 3, rating: 1800, theme: "Quiet first move", fen: "6k1/5pp1/8/4R3/7N/8/P1P2PPP/2Q3K1 w - - 0 1" }
+  ];
+
+  var $ = function (s) { return document.querySelector(s); };
+  var boardEl = $("#board");
+
+  if (typeof Chess === "undefined") {
+    boardEl.outerHTML = '<div class="err">The chess engine could not load. Reload the page to try again.</div>';
+    return;
+  }
+
+  var GLYPH = { k: "♚", q: "♛", r: "♜", b: "♝", n: "♞", p: "♟" };
+  var VS15 = "︎";
+  var FILES = "abcdefgh";
+
+  /* ---------- saved stats ---------- */
+  var S = { rating: 1000, streak: 0, best: 0, solved: 0, log: [], seen: [] };
+  try {
+    var raw = localStorage.getItem("matefinder.v1");
+    if (raw) { var o = JSON.parse(raw); if (o && typeof o.rating === "number") S = Object.assign(S, o); }
+  } catch (e) {}
+  function save() { try { localStorage.setItem("matefinder.v1", JSON.stringify(S)); } catch (e) {} }
+
+  /* ---------- mate solver ---------- */
+  function orderMoves(g) {
+    var ms = g.moves({ verbose: true });
+    var scored = ms.map(function (m) {
+      g.move(m);
+      var s = 0;
+      if (g.in_checkmate()) s = 100; else if (g.in_check()) s = 10;
+      g.undo();
+      if (m.captured) s += 1;
+      return [s, m];
+    });
+    scored.sort(function (a, b) { return b[0] - a[0]; });
+    return scored.map(function (x) { return x[1]; });
+  }
+  function leadsToMate(g, m, n) {
+    // m is already legal for the side to move; n = moves the mover may use including m.
+    g.move(m);
+    var ok = false;
+    if (g.in_checkmate()) ok = true;
+    else if (n > 1 && !g.game_over()) {
+      var replies = g.moves({ verbose: true });
+      ok = replies.length > 0;
+      for (var i = 0; i < replies.length; i++) {
+        g.move(replies[i]);
+        var good = canMate(g, n - 1);
+        g.undo();
+        if (!good) { ok = false; break; }
+      }
+    }
+    g.undo();
+    return ok;
+  }
+  function canMate(g, n) {
+    if (n < 1) return false;
+    var ms = orderMoves(g);
+    for (var i = 0; i < ms.length; i++) if (leadsToMate(g, ms[i], n)) return true;
+    return false;
+  }
+  function winningMoves(g, n) {
+    return orderMoves(g).filter(function (m) { return leadsToMate(g, m, n); });
+  }
+
+  /* ---------- game state ---------- */
+  var ch, P, color, flipped = false;
+  var selected = null, targets = [], last = null;
+  var hintFrom = null, hintTo = null, hintLevel = 0;
+  var locked = true, remaining = 0, resolved = false, finished = false, mateSq = null;
+  var t0 = 0, timerId = null, drag = null, ghost = null, promoOpen = false, timeouts = [];
+
+  function later(fn, ms) { var id = setTimeout(fn, ms); timeouts.push(id); return id; }
+  function clearLater() { timeouts.forEach(clearTimeout); timeouts = []; }
+
+  function kingSquare(c) {
+    var b = ch.board();
+    for (var r = 0; r < 8; r++) for (var f = 0; f < 8; f++) {
+      var p = b[r][f];
+      if (p && p.type === "k" && p.color === c) return FILES[f] + (8 - r);
+    }
+    return null;
+  }
+
+  function render() {
+    var kids = Array.prototype.slice.call(boardEl.children);
+    kids.forEach(function (n) { if (!n.classList.contains("promo")) n.remove(); });
+    var b = ch.board();
+    var checkSq = ch.in_check() ? kingSquare(ch.turn()) : null;
+    var frag = document.createDocumentFragment();
+    for (var vr = 0; vr < 8; vr++) {
+      for (var vc = 0; vc < 8; vc++) {
+        var r = flipped ? 7 - vr : vr, c = flipped ? 7 - vc : vc;
+        var sq = FILES[c] + (8 - r);
+        var cell = document.createElement("div");
+        cell.className = "sq " + ((r + c) % 2 === 0 ? "l" : "d");
+        cell.dataset.sq = sq;
+        if (last && (last[0] === sq || last[1] === sq)) cell.classList.add("last");
+        if (selected === sq) cell.classList.add("sel");
+        if (hintFrom === sq || hintTo === sq) cell.classList.add("hint");
+        if (checkSq === sq) cell.classList.add(ch.in_checkmate() ? "mate" : "check", "check");
+        var p = b[r][c];
+        if (vc === 0) { var rk = document.createElement("span"); rk.className = "coord rk"; rk.textContent = String(8 - r); cell.appendChild(rk); }
+        if (vr === 7) { var fl = document.createElement("span"); fl.className = "coord fl"; fl.textContent = FILES[c]; cell.appendChild(fl); }
+        if (targets.indexOf(sq) >= 0) {
+          var mark = document.createElement("span");
+          mark.className = p ? "ring" : "dot";
+          cell.appendChild(mark);
+        }
+        if (p) {
+          var pe = document.createElement("span");
+          pe.className = "piece " + p.color;
+          pe.textContent = GLYPH[p.type] + VS15;
+          if (drag && drag.moved && drag.from === sq) pe.classList.add("lift");
+          cell.appendChild(pe);
+        }
+        frag.appendChild(cell);
+      }
+    }
+    boardEl.insertBefore(frag, boardEl.firstChild);
+  }
+
+  /* ---------- status + stats UI ---------- */
+  function setStatus(msg, sub, kind) {
+    $("#msg").textContent = msg;
+    var s = $("#sub"); s.textContent = "";
+    if (sub && sub.nodeType) s.appendChild(sub); else s.textContent = sub || "";
+    $("#statusbox").className = "card status" + (kind ? " " + kind : "");
+  }
+  function updateStats() {
+    $("#rating").textContent = S.rating;
+    $("#streak").textContent = S.streak;
+    $("#solved").textContent = S.solved;
+    var log = $("#log"); log.innerHTML = "";
+    S.log.slice(-12).forEach(function (k) {
+      var i = document.createElement("i");
+      i.className = k === "win" ? "win" : k === "fail" ? "fail" : "";
+      i.title = k === "win" ? "Solved" : k === "fail" ? "Missed" : "Solved with a hint";
+      log.appendChild(i);
+    });
+  }
+  function fmtTime(ms) {
+    var s = Math.floor(ms / 1000);
+    return Math.floor(s / 60) + ":" + String(s % 60).padStart(2, "0");
+  }
+  function startTimer() {
+    clearInterval(timerId); t0 = Date.now(); $("#timer").textContent = "0:00";
+    timerId = setInterval(function () { $("#timer").textContent = fmtTime(Date.now() - t0); }, 500);
+  }
+  function stopTimer() { clearInterval(timerId); timerId = null; }
+
+  function resolve(kind) {
+    if (resolved) return 0;
+    resolved = true;
+    var E = 1 / (1 + Math.pow(10, (P.rating - S.rating) / 400));
+    var d = 0;
+    if (kind === "win") { d = Math.round(32 * (1 - E)); S.streak++; S.solved++; if (S.streak > S.best) S.best = S.streak; }
+    else if (kind === "fail") { d = Math.round(32 * (0 - E)); S.streak = 0; }
+    S.rating = Math.max(100, S.rating + d);
+    S.log.push(kind); if (S.log.length > 40) S.log = S.log.slice(-40);
+    if (S.seen.indexOf(P.id) < 0) S.seen.push(P.id);
+    save(); updateStats();
+    return d;
+  }
+  function deltaNode(d) {
+    var span = document.createElement("span");
+    span.className = "delta " + (d >= 0 ? "up" : "down");
+    span.textContent = "Rating " + (d >= 0 ? "+" : "−") + Math.abs(d);
+    return span;
+  }
+
+  /* ---------- puzzle flow ---------- */
+  function pickNext() {
+    var pool = PUZZLES.filter(function (p) { return S.seen.indexOf(p.id) < 0 && (!P || p.id !== P.id); });
+    if (!pool.length) { S.seen = P ? [P.id] : []; pool = PUZZLES.filter(function (p) { return !P || p.id !== P.id; }); }
+    pool.sort(function (a, b) { return Math.abs(a.rating - S.rating) - Math.abs(b.rating - S.rating); });
+    return pool[Math.floor(Math.random() * Math.min(3, pool.length))];
+  }
+
+  function load(p) {
+    clearLater(); closePromo();
+    P = p; ch = new Chess(p.fen);
+    color = ch.turn(); flipped = color === "b";
+    selected = null; targets = []; last = null; hintFrom = hintTo = null; hintLevel = 0;
+    remaining = p.n; resolved = false; finished = false; locked = false; drag = null;
+    var side = color === "w" ? "White" : "Black";
+    $("#title").textContent = "Mate in " + p.n;
+    $("#side").textContent = side + " to move";
+    $("#chip").className = "chip " + color;
+    $("#prating").textContent = p.rating;
+    $("#theme").textContent = "";
+    $("#hintBtn").disabled = false; $("#solBtn").disabled = false;
+    $("#skipBtn").hidden = false; $("#nextBtn").hidden = true;
+    setStatus("Find the checkmate.", side + " mates in " + p.n + (p.n === 1 ? " move." : " moves."));
+    startTimer(); render(); updateStats();
+  }
+  function nextPuzzle() {
+    if (!finished && !resolved && P) resolve("fail");
+    load(pickNext());
+  }
+
+  function finish(msgKind) {
+    finished = true; locked = true; stopTimer();
+    selected = null; targets = []; hintFrom = hintTo = null;
+    $("#hintBtn").disabled = true; $("#solBtn").disabled = true;
+    $("#skipBtn").hidden = true; $("#nextBtn").hidden = false;
+    $("#theme").textContent = P.theme;
+    render();
+  }
+
+  function isWinning(m) { return leadsToMate(ch, m, remaining); }
+
+  function tryMove(from, to) {
+    var ms = ch.moves({ square: from, verbose: true }).filter(function (m) { return m.to === to; });
+    if (!ms.length) { selected = null; targets = []; render(); return; }
+    if (ms[0].promotion) { openPromo(from, to); return; }
+    attempt(ms[0]);
+  }
+
+  function attempt(m) {
+    locked = true;
+    var prevLast = last;
+    var winning = isWinning(m);
+    ch.move({ from: m.from, to: m.to, promotion: m.promotion });
+    last = [m.from, m.to]; selected = null; targets = []; hintFrom = hintTo = null;
+    render();
+    if (!winning) {
+      boardEl.classList.remove("shake"); void boardEl.offsetWidth; boardEl.classList.add("shake");
+      var d = resolve("fail");
+      setStatus("That is not the mate.", d !== 0 ? deltaNode(d) : "Try another move.", "bad");
+      later(function () {
+        ch.undo(); last = prevLast; locked = false; render();
+        setStatus("Try again.", "Look for forcing moves: checks first.", "bad");
+      }, 850);
+      return;
+    }
+    if (ch.in_checkmate()) { solved(); return; }
+    remaining--;
+    setStatus("Correct.", "Waiting for the reply...", "good");
+    later(opponentMove, 550);
+  }
+
+  function opponentMove() {
+    var replies = ch.moves({ verbose: true });
+    var best = replies[0], bk = -1;
+    replies.forEach(function (r) {
+      ch.move(r);
+      var kk = remaining + 1;
+      for (var j = 1; j <= remaining; j++) { if (canMate(ch, j)) { kk = j; break; } }
+      ch.undo();
+      if (kk > bk) { bk = kk; best = r; }
+    });
+    ch.move(best); last = [best.from, best.to]; render();
+    locked = false;
+    setStatus("Your move.", "Mate in " + remaining + (remaining === 1 ? " move." : " moves."));
+  }
+
+  function solved() {
+    var kind = resolved ? null : (hintLevel > 0 ? "hint" : "win");
+    var d = kind ? resolve(kind) : 0;
+    var sub;
+    if (kind === "win") sub = deltaNode(d);
+    else if (kind === "hint") sub = "Solved with a hint, so your rating stays put.";
+    else sub = "Solved after a miss, so no rating change.";
+    finish();
+    setStatus("Checkmate! Puzzle solved.", sub, "good");
+  }
+
+  /* ---------- hint and solution ---------- */
+  function hint() {
+    if (locked || finished) return;
+    var wm = winningMoves(ch, remaining);
+    if (!wm.length) return;
+    hintLevel = Math.min(2, hintLevel + 1);
+    hintFrom = wm[0].from;
+    hintTo = hintLevel >= 2 ? wm[0].to : null;
+    selected = null; targets = [];
+    setStatus(hintLevel === 1 ? "Look at the highlighted piece." : "Move it to the highlighted square.",
+      hintLevel === 1 ? "Press Hint again to see where it goes." : "Solving with a hint will not change your rating.");
+    render();
+  }
+
+  function showSolution() {
+    if (finished || locked) return;
+    var d = resolve("fail");
+    $("#hintBtn").disabled = true; $("#solBtn").disabled = true;
+    locked = true; selected = null; targets = []; hintFrom = hintTo = null;
+    setStatus("Here is the solution.", d !== 0 ? deltaNode(d) : "", "bad");
+    function step() {
+      var wm = winningMoves(ch, remaining);
+      if (!wm.length) return;
+      var m = wm[0];
+      ch.move(m); last = [m.from, m.to]; render();
+      if (ch.in_checkmate()) { finish(); setStatus("Checkmate.", m.san + " ends it.", "bad"); return; }
+      remaining--;
+      later(function () {
+        opponentSilent();
+        later(step, 800);
+      }, 800);
+    }
+    function opponentSilent() {
+      var replies = ch.moves({ verbose: true });
+      var best = replies[0], bk = -1;
+      replies.forEach(function (r) {
+        ch.move(r);
+        var kk = remaining + 1;
+        for (var j = 1; j <= remaining; j++) { if (canMate(ch, j)) { kk = j; break; } }
+        ch.undo();
+        if (kk > bk) { bk = kk; best = r; }
+      });
+      ch.move(best); last = [best.from, best.to]; render();
+    }
+    later(step, 500);
+  }
+
+  /* ---------- promotion picker ---------- */
+  function openPromo(from, to) {
+    promoOpen = true; locked = true;
+    var box = document.createElement("div");
+    box.className = "promo";
+    var inner = document.createElement("div"); inner.className = "promo-box";
+    ["q", "r", "b", "n"].forEach(function (t) {
+      var bt = document.createElement("button");
+      bt.type = "button"; bt.setAttribute("aria-label", "Promote to " + t);
+      var pe = document.createElement("span"); pe.className = "piece " + color; pe.textContent = GLYPH[t] + VS15;
+      bt.appendChild(pe);
+      bt.addEventListener("click", function (ev) {
+        ev.stopPropagation();
+        closePromo(); attempt({ from: from, to: to, promotion: t });
+      });
+      inner.appendChild(bt);
+    });
+    box.appendChild(inner);
+    box.addEventListener("click", function (ev) {
+      if (ev.target === box) { closePromo(); locked = false; selected = null; targets = []; render(); }
+    });
+    boardEl.appendChild(box);
+  }
+  function closePromo() {
+    promoOpen = false;
+    var pr = boardEl.querySelector(".promo"); if (pr) pr.remove();
+  }
+
+  /* ---------- pointer input: tap-tap and drag ---------- */
+  function sqAt(e) {
+    var rect = boardEl.getBoundingClientRect();
+    var x = (e.clientX - rect.left) / rect.width, y = (e.clientY - rect.top) / rect.height;
+    if (x < 0 || y < 0 || x >= 1 || y >= 1) return null;
+    var vc = Math.floor(x * 8), vr = Math.floor(y * 8);
+    var c = flipped ? 7 - vc : vc, r = flipped ? 7 - vr : vr;
+    return FILES[c] + (8 - r);
+  }
+  function selectSquare(sq) {
+    selected = sq;
+    targets = ch.moves({ square: sq, verbose: true }).map(function (m) { return m.to; });
+  }
+  function moveGhost(e) {
+    if (!ghost) return;
+    var size = ghost.offsetWidth;
+    ghost.style.transform = "translate(" + (e.clientX - size / 2) + "px," + (e.clientY - size / 2) + "px)";
+  }
+  function endDrag() { if (ghost) { ghost.remove(); ghost = null; } drag = null; }
+
+  boardEl.addEventListener("pointerdown", function (e) {
+    if (e.button !== undefined && e.button !== 0) return;
+    if (locked || finished || promoOpen || (e.target.closest && e.target.closest(".promo"))) return;
+    var sq = sqAt(e); if (!sq) return;
+    if (selected && targets.indexOf(sq) >= 0) { tryMove(selected, sq); return; }
+    var p = ch.get(sq);
+    if (p && p.color === color) {
+      selectSquare(sq);
+      drag = { from: sq, moved: false, x: e.clientX, y: e.clientY, piece: p };
+      try { boardEl.setPointerCapture(e.pointerId); } catch (err) {}
+      render();
+    } else {
+      selected = null; targets = []; render();
+    }
+    e.preventDefault();
+  });
+  boardEl.addEventListener("pointermove", function (e) {
+    if (!drag) return;
+    if (!drag.moved && Math.hypot(e.clientX - drag.x, e.clientY - drag.y) > 5) {
+      drag.moved = true;
+      var size = boardEl.getBoundingClientRect().width / 8;
+      ghost = document.createElement("div");
+      ghost.className = "ghost " + drag.piece.color;
+      ghost.style.width = size + "px"; ghost.style.height = size + "px";
+      ghost.style.fontSize = size * 0.82 + "px";
+      ghost.textContent = GLYPH[drag.piece.type] + VS15;
+      document.body.appendChild(ghost);
+      render();
+    }
+    if (drag.moved) moveGhost(e);
+  });
+  function dropPiece(e) {
+    if (!drag) return;
+    var d = drag, moved = d.moved;
+    var to = sqAt(e);
+    endDrag();
+    if (moved) {
+      if (to && to !== d.from && targets.indexOf(to) >= 0) tryMove(d.from, to);
+      else render();
+    }
+  }
+  boardEl.addEventListener("pointerup", dropPiece);
+  boardEl.addEventListener("pointercancel", function () { endDrag(); render(); });
+
+  /* ---------- buttons ---------- */
+  $("#hintBtn").addEventListener("click", hint);
+  $("#solBtn").addEventListener("click", showSolution);
+  $("#flipBtn").addEventListener("click", function () { flipped = !flipped; render(); });
+  $("#skipBtn").addEventListener("click", nextPuzzle);
+  $("#nextBtn").addEventListener("click", nextPuzzle);
+  document.addEventListener("keydown", function (e) {
+    if (e.key === "Escape" && promoOpen) { closePromo(); locked = false; selected = null; targets = []; render(); }
+  });
+
+  load(pickNext());
+})();
+</script>
+</body>
+</html>
